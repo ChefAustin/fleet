@@ -404,7 +404,9 @@ func checkCVEs(
 						// No such vendor in the Vulnerability dictionary
 						continue
 					}
-					cacheHits := cache.Get([]*wfn.Attributes{CPEItem.GetMeta()})
+
+					cpeItems := expandCPEItem(CPEItem.GetMeta())
+					cacheHits := cache.Get(cpeItems)
 					for _, matches := range cacheHits {
 						if len(matches.CPEs) == 0 {
 							continue
@@ -483,6 +485,24 @@ func checkCVEs(
 	wg.Wait()
 
 	return foundSoftwareVulns, foundOSVulns, nil
+}
+
+func expandCPEItem(cpeItem *wfn.Attributes) []*wfn.Attributes {
+	cpeItems := []*wfn.Attributes{cpeItem}
+
+	switch {
+	case cpeItem.TargetSW == "visual_studio_code":
+		cpeItem2 := *cpeItem
+		cpeItem2.TargetSW = "visual_studio"
+		cpeItems = append(cpeItems, &cpeItem2)
+	case cpeItem.Vendor == "microsoft" && cpeItem.Product == "python_extension":
+		cpeItem2 := *cpeItem
+		cpeItem2.Product = "visual_studio_code"
+		cpeItem2.TargetSW = "python"
+		cpeItems = append(cpeItems, &cpeItem2)
+	}
+
+	return cpeItems
 }
 
 // Returns the versionEndExcluding string for the given CVE and host software meta

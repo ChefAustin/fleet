@@ -709,6 +709,7 @@ SELECT
   '' AS extension_id,
   '' AS browser,
   'apps' AS source,
+  '' AS vendor,
   last_opened_time AS last_opened_at,
   path AS installed_path
 FROM apps
@@ -721,6 +722,7 @@ SELECT
   '' AS extension_id,
   '' AS browser,
   'python_packages' AS source,
+  '' AS vendor,
   0 AS last_opened_at,
   path AS installed_path
 FROM python_packages
@@ -733,6 +735,7 @@ SELECT
   identifier AS extension_id,
   browser_type AS browser,
   'chrome_extensions' AS source,
+  '' AS vendor,
   0 AS last_opened_at,
   path AS installed_path
 FROM cached_users CROSS JOIN chrome_extensions USING (uid)
@@ -745,6 +748,7 @@ SELECT
   identifier AS extension_id,
   'firefox' AS browser,
   'firefox_addons' AS source,
+  '' AS vendor,
   0 AS last_opened_at,
   path AS installed_path
 FROM cached_users CROSS JOIN firefox_addons USING (uid)
@@ -757,6 +761,7 @@ SELECT
   '' AS extension_id,
   '' AS browser,
   'safari_extensions' AS source,
+  '' AS vendor,
   0 AS last_opened_at,
   path AS installed_path
 FROM cached_users CROSS JOIN safari_extensions USING (uid)
@@ -769,12 +774,38 @@ SELECT
   '' AS extension_id,
   '' AS browser,
   'homebrew_packages' AS source,
+  '' AS vendor,
   0 AS last_opened_at,
   path AS installed_path
 FROM homebrew_packages;
 `),
 	Platforms:        []string{"darwin"},
 	DirectIngestFunc: directIngestSoftware,
+}
+
+// softwareExtra collects software on a separate query for two reasons:
+//   - It might use tables that are not present in older versions of osquery
+//     (e.g. vscode_extensions is not available in osquery < 5.11.0).
+//   - Avoid growing of the main `software_{macos|windows|linux}` queries
+//     (having big queries that can cause performance issues or be denylisted).
+var softwareExtra = DetailQuery{
+	Query: withCachedUsers(`WITH cached_users AS (%s)
+SELECT
+  name,
+  version,
+  'IDE extension (VS Code)' AS type,
+  '' AS bundle_identifier,
+  uuid AS extension_id,
+  '' AS browser,
+  'vscode_extensions' AS source,
+  publisher AS vendor,
+  '' AS last_opened_at,
+  path AS installed_path
+FROM cached_users CROSS JOIN vscode_extensions USING (uid)`),
+	Platforms: append(fleet.HostLinuxOSs, "darwin", "windows"),
+	Discovery: discoveryTable("vscode_extensions"),
+	// Has no IngestFunc, DirectIngestFunc or DirectTaskIngestFunc because
+	// the results of this query are appended to the results of the other software queries.
 }
 
 var scheduledQueryStats = DetailQuery{
@@ -1812,6 +1843,7 @@ func GetDetailQueries(
 		generatedMap["software_linux"] = softwareLinux
 		generatedMap["software_windows"] = softwareWindows
 		generatedMap["software_chrome"] = softwareChrome
+		generatedMap["software_extra"] = softwareExtra
 	}
 
 	if features != nil && features.EnableHostUsers {

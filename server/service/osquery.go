@@ -950,6 +950,8 @@ func (svc *Service) SubmitDistributedQueryResults(
 	policyResults := map[uint]*bool{}
 	refetchCriticalSet := host.RefetchCriticalQueriesUntil != nil
 
+	svc.preProcessSoftwareResults(host.ID, &results, &statuses, &messages)
+
 	svc.maybeDebugHost(ctx, host, results, statuses, messages, stats)
 
 	var hostWithoutPolicies bool
@@ -1089,6 +1091,53 @@ func (svc *Service) SubmitDistributedQueryResults(
 	}
 
 	return nil
+}
+
+// preProcessSoftwareResults will run pre-processing on the responses of the software queries.
+// It will move the results from the `software_extra` query into the main software query results
+// (software_{macos|linux|windows}).
+func (svc *Service) preProcessSoftwareResults(
+	hostID uint,
+	results *fleet.OsqueryDistributedQueryResults,
+	statuses *map[string]fleet.OsqueryStatus,
+	messages *map[string]string,
+) {
+	status, ok := (*statuses)[hostDetailQueryPrefix+"software_extra"]
+	if !ok {
+		return // query did not execute, e.g. vscode_extensions table does not exist.
+	}
+	failed := status != fleet.StatusOK
+	if failed {
+		// query executed but with errors.
+		level.Error(svc.logger).Log(
+			"query", "software_extra",
+			"message", (*messages)[hostDetailQueryPrefix+"software_extra"],
+			"hostID", hostID,
+		)
+		return
+	}
+	var softwareExtraRows []map[string]string
+	for query, rows := range *results {
+		if strings.TrimPrefix(query, hostDetailQueryPrefix) == "software_extra" {
+			softwareExtraRows = rows
+			break
+		}
+	}
+	if len(softwareExtraRows) == 0 {
+		return
+	}
+	for query := range *results {
+		querySuffix := strings.TrimPrefix(query, hostDetailQueryPrefix)
+		// Only one of these execute in each host.
+		if querySuffix == "software_macos" ||
+			querySuffix == "software_windows" ||
+			querySuffix == "software_linux" {
+			// Move the results
+			(*results)[query] = append((*results)[query], softwareExtraRows...)
+			delete(*results, hostDetailQueryPrefix+"software_extra")
+			break
+		}
+	}
 }
 
 // globalPolicyAutomationsEnabled returns true if any of the global policy automations are enabled.
