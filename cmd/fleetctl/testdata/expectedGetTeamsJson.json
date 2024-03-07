@@ -27,7 +27,8 @@
 			},
 			"integrations": {
 				"jira": null,
-				"zendesk": null
+				"zendesk": null,
+				"google_calendar": null
 			},
 			"features": {
 				"enable_host_users": true,
@@ -102,7 +103,8 @@
 			},
 			"integrations": {
 				"jira": null,
-				"zendesk": null
+				"zendesk": null,
+				"google_calendar": null
 			},
 			"features": {
 				"enable_host_users": false,
